@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { validEmail } from '@/lib/email'
+import { validPhone } from '@/lib/phone'
 
 export type Unit = {
   id: string
@@ -19,6 +20,9 @@ type Relationship = {
   label: string
   value: string
 }
+
+// Índice del paso de revisión en STEPS (joinSteps.tsx).
+const REVIEW_STEP = 7
 
 export type JoinData = {
   consorcio: {
@@ -42,6 +46,8 @@ export function useJoinForm({
   token: string
 }) {
   const [step, setStep] = useState(0)
+  // true mientras el vecino corrige un dato desde la revisión: al continuar vuelve ahí.
+  const [editing, setEditing] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
 
   const [firstName, setFirstName] = useState('')
@@ -87,17 +93,30 @@ export function useJoinForm({
 
   const emailValid = validEmail(email.trim().toLowerCase())
 
-  function next() {
+  const phoneValid = validPhone(phone.trim())
+
+  function goTo(target: number) {
     if (transitioning) {
       return
     }
 
     setTransitioning(true)
 
-    window.setTimeout(function advanceStep() {
-      setStep(current => current + 1)
+    window.setTimeout(function changeStep() {
+      setStep(target)
+      setEditing(editingStep => editingStep && target !== REVIEW_STEP)
       setTransitioning(false)
     }, 240)
+  }
+
+  function next() {
+    goTo(editing ? REVIEW_STEP : step + 1)
+  }
+
+  function editStep(target: number) {
+    setSubmitError(null)
+    setEditing(true)
+    goTo(target)
   }
 
   function handleEnter(event: KeyboardEvent<HTMLInputElement>, value: string) {
@@ -173,6 +192,7 @@ export function useJoinForm({
 
   return {
     data,
+    editStep,
     email,
     emailValid,
     filteredUnits,
@@ -183,6 +203,7 @@ export function useJoinForm({
     lastName,
     next,
     phone,
+    phoneValid,
     relationship,
     selectedUnit,
     selectUnit,
