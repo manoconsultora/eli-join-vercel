@@ -28,6 +28,9 @@ export type JoinData = {
 }
 
 const SUBMIT_ERROR = 'No pudimos enviar tu solicitud.'
+// Doesn't say the contact is blocked: the administration explains it if needed.
+const CONTACT_BLOCKED_ERROR =
+  'No pudimos registrar tu solicitud. Comunicate con la administración del edificio.'
 
 export function useJoinForm({
   data,
@@ -144,6 +147,11 @@ export function useJoinForm({
       if (!response.ok) {
         if (result.code === 'ALREADY_PENDING') {
           setStep(9)
+          return
+        }
+
+        if (result.code === 'CONTACT_BLOCKED') {
+          setSubmitError(CONTACT_BLOCKED_ERROR)
           return
         }
 
