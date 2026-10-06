@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { validEmail } from '@/lib/email'
 import {
   errorResponse,
   findActiveJoinLink,
@@ -28,8 +29,6 @@ type Submission = {
 }
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase()
-
-const validEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
 // undefined: el body no es JSON válido
 async function readBody(request: Request) {

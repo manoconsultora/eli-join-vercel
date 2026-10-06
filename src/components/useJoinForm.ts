@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react'
 
+import { validEmail } from '@/lib/email'
+
 export type Unit = {
   id: string
   label: string
@@ -82,6 +84,8 @@ export function useJoinForm({
   )
 
   const selectedUnit = data.units.find(unit => unit.id === unitId)
+
+  const emailValid = validEmail(email.trim().toLowerCase())
 
   function next() {
     if (transitioning) {
@@ -170,6 +174,7 @@ export function useJoinForm({
   return {
     data,
     email,
+    emailValid,
     filteredUnits,
     firstName,
     handleEnter,

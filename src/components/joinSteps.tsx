@@ -88,13 +88,22 @@ const EmailStep = ({ form }: StepProps) => (
     <LineInput
       inputRef={form.inputRef}
       onChange={form.setEmail}
-      onKeyDown={event => form.handleEnter(event, form.email)}
+      onKeyDown={event =>
+        form.handleEnter(event, form.emailValid ? form.email : '')
+      }
       placeholder="nombre@email.com"
       type="email"
       value={form.email}
     />
 
-    <ContinueButton disabled={!form.email.trim()} onClick={form.next} />
+    {/* Tono neutro: aparece mientras escribe, no es un error todavía. */}
+    <p aria-live="polite" className="mt-3 min-h-5 text-sm text-zinc-400">
+      {form.email.trim() && !form.emailValid
+        ? 'Escribilo completo, por ejemplo nombre@email.com.'
+        : ''}
+    </p>
+
+    <ContinueButton disabled={!form.emailValid} onClick={form.next} />
   </Screen>
 )
 
