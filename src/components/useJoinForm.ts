@@ -33,10 +33,25 @@ export type JoinData = {
   units: Unit[]
 }
 
-const SUBMIT_ERROR = 'No pudimos enviar tu solicitud.'
-// Doesn't say the contact is blocked: the administration explains it if needed.
-const CONTACT_BLOCKED_ERROR =
-  'No pudimos registrar tu solicitud. Comunicate con la administración del edificio.'
+// También cubre INTERNAL_ERROR y cualquier código nuevo: el vecino nunca ve el código crudo.
+const SUBMIT_ERROR =
+  'No pudimos enviar tu solicitud. Probá de nuevo en unos minutos.'
+
+const INACTIVE_LINK_ERROR =
+  'Este link ya no está activo. Pedile uno nuevo a la administración del edificio.'
+
+// Códigos de submit/route.ts y lib/joinLink.ts. ALREADY_PENDING no está: tiene su propio paso.
+const SUBMIT_ERRORS: Record<string, string> = {
+  // Doesn't say the contact is blocked: the administration explains it if needed.
+  CONTACT_BLOCKED:
+    'No pudimos registrar tu solicitud. Comunicate con la administración del edificio.',
+  INVALID_TOKEN: INACTIVE_LINK_ERROR,
+  TOKEN_INACTIVE: INACTIVE_LINK_ERROR,
+  UNIT_LIMIT_REACHED:
+    'Esa unidad ya tiene el máximo de residentes. Comunicate con la administración del edificio.',
+  UNIT_NOT_FOUND: 'No encontramos esa unidad. Elegila de nuevo.',
+  VALIDATION_ERROR: 'Revisá tus datos y volvé a intentar.',
+}
 
 export function useJoinForm({
   data,
@@ -173,12 +188,7 @@ export function useJoinForm({
           return
         }
 
-        if (result.code === 'CONTACT_BLOCKED') {
-          setSubmitError(CONTACT_BLOCKED_ERROR)
-          return
-        }
-
-        setSubmitError(result.code ?? SUBMIT_ERROR)
+        setSubmitError(SUBMIT_ERRORS[result.code ?? ''] ?? SUBMIT_ERROR)
         return
       }
 
