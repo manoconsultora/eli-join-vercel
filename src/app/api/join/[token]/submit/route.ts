@@ -6,6 +6,7 @@ import {
   findActiveJoinLink,
   type JoinLink,
 } from '@/lib/joinLink'
+import { validPhone } from '@/lib/phone'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const MAX_ACTIVE_RESIDENTS_PER_UNIT = 5
@@ -56,6 +57,7 @@ function parseSubmission(body: SubmitBody) {
     !firstName ||
     !lastName ||
     !validEmail(email) ||
+    (phone !== null && !validPhone(phone)) ||
     !unitId ||
     !relationshipType
   ) {

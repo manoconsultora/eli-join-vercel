@@ -80,16 +80,27 @@ export const ContinueButton = ({
   </div>
 )
 
+// Toda la fila es tocable (el ::after del botón la cubre) y el texto oculto dice qué se cambia.
 export const Review = ({
   children,
   label,
+  onChange,
 }: {
   children: ReactNode
   label: string
+  onChange: () => void
 }) => (
-  <div className="border-b border-zinc-100 pb-3">
-    <div className="text-[0.7rem] font-medium tracking-[0.16em] text-zinc-400 uppercase">
-      {label}
+  <div className="relative border-b border-zinc-100 pb-3">
+    <div className="flex items-center justify-between text-[0.7rem] font-medium tracking-[0.16em] uppercase">
+      <span className="text-zinc-400">{label}</span>
+
+      <button
+        className="text-[#2346DD] uppercase after:absolute after:inset-0"
+        onClick={onChange}
+        type="button"
+      >
+        Cambiar<span className="sr-only"> {label.toLowerCase()}</span>
+      </button>
     </div>
 
     <div className="mt-1 text-lg font-[100] text-zinc-900">{children}</div>

@@ -117,13 +117,22 @@ const PhoneStep = ({ form }: StepProps) => (
     <LineInput
       inputRef={form.inputRef}
       onChange={form.setPhone}
-      onKeyDown={event => form.handleEnter(event, form.phone)}
+      onKeyDown={event =>
+        form.handleEnter(event, form.phoneValid ? form.phone : '')
+      }
       placeholder="+54 9 11..."
       type="tel"
       value={form.phone}
     />
 
-    <ContinueButton disabled={!form.phone.trim()} onClick={form.next} />
+    {/* Tono neutro: aparece mientras escribe, no es un error todavía. */}
+    <p aria-live="polite" className="mt-3 min-h-5 text-sm text-zinc-400">
+      {form.phone.trim() && !form.phoneValid
+        ? 'Escribilo con código de área, por ejemplo +54 9 11 1234-5678.'
+        : ''}
+    </p>
+
+    <ContinueButton disabled={!form.phoneValid} onClick={form.next} />
   </Screen>
 )
 
@@ -203,17 +212,27 @@ const ReviewStep = ({ form }: StepProps) => (
     </Title>
 
     <div className="mt-8 space-y-4">
-      <Review label="Nombre">
-        {form.firstName} {form.lastName}
+      <Review label="Nombre" onChange={() => form.editStep(1)}>
+        {form.firstName}
       </Review>
 
-      <Review label="Email">{form.email}</Review>
+      <Review label="Apellido" onChange={() => form.editStep(2)}>
+        {form.lastName}
+      </Review>
 
-      <Review label="Teléfono">{form.phone}</Review>
+      <Review label="Email" onChange={() => form.editStep(3)}>
+        {form.email}
+      </Review>
 
-      <Review label="Unidad">{form.selectedUnit?.label}</Review>
+      <Review label="Teléfono" onChange={() => form.editStep(4)}>
+        {form.phone}
+      </Review>
 
-      <Review label="Relación">
+      <Review label="Unidad" onChange={() => form.editStep(5)}>
+        {form.selectedUnit?.label}
+      </Review>
+
+      <Review label="Relación" onChange={() => form.editStep(6)}>
         {
           form.data.relationships.find(item => item.value === form.relationship)
             ?.label
@@ -277,7 +296,8 @@ const AlreadyPendingStep = () => (
   </Screen>
 )
 
-// El índice es el número de paso: submit salta a 8 (enviada) o 9 (ya pendiente).
+// El índice es el número de paso: submit salta a 8 (enviada) o 9 (ya pendiente),
+// y la revisión (7) vuelve a 1-6 para corregir un dato (useJoinForm.ts, REVIEW_STEP).
 export const STEPS: ComponentType<StepProps>[] = [
   WelcomeStep,
   FirstNameStep,
