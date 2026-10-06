@@ -156,6 +156,11 @@ async function insertRequest(joinLink: JoinLink, submission: Submission) {
       unidad_id: submission.unitId,
     })
 
+  // The database rejects contacts on the organization's blacklist (eli-database-platform 20261006120000).
+  if (error?.message === 'contact_blocked') {
+    return errorResponse('CONTACT_BLOCKED', 403)
+  }
+
   if (error) {
     return errorResponse('INTERNAL_ERROR', 500)
   }
