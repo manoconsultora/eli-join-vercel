@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { validEmail } from '@/lib/email'
+import { clearProgress, readProgress, saveProgress } from '@/lib/joinProgress'
 import { validPhone } from '@/lib/phone'
 
 export type Unit = {
@@ -24,9 +25,11 @@ type Relationship = {
 // Índices en STEPS (joinSteps.tsx).
 const EMAIL_STEP = 3
 const VERIFY_STEP = 4
+const UNIT_STEP = 6
+const RELATIONSHIP_STEP = 7
 const REVIEW_STEP = 8
 const SENT_STEP = 9
-const ALREADY_PENDING_STEP = 10
+const UPDATED_STEP = 10
 
 // La base admite un código nuevo por minuto (eli-database-platform 20261010200000).
 const RESEND_DELAY_MS = 60_000
@@ -47,7 +50,7 @@ const SUBMIT_ERROR =
 const INACTIVE_LINK_ERROR =
   'Este link ya no está activo. Pedile uno nuevo a la administración del edificio.'
 
-// Códigos de submit/route.ts y lib/joinLink.ts. ALREADY_PENDING no está: tiene su propio paso.
+// Códigos de submit/route.ts y lib/joinLink.ts.
 const SUBMIT_ERRORS: Record<string, string> = {
   // Doesn't say the contact is blocked: the administration explains it if needed.
   CONTACT_BLOCKED:
@@ -88,6 +91,66 @@ const normalizeEmail = (value: string) => value.trim().toLowerCase()
 
 const validCode = (value: string) => /^\d{6}$/.test(value)
 
+const EMPTY_FORM = {
+  codeEmail: null as string | null,
+  email: '',
+  firstName: '',
+  lastName: '',
+  phone: '',
+  relationship: null as string | null,
+  resumed: false,
+  step: 0,
+  unitId: '',
+  unitLabel: '',
+  verificationId: null as string | null,
+  verifiedEmail: null as string | null,
+}
+
+// Sin la unidad o la relación guardadas, retoma en el paso que las pide.
+function resumeStep({
+  relationshipFound,
+  savedStep,
+  unitFound,
+}: {
+  relationshipFound: boolean
+  savedStep: number
+  unitFound: boolean
+}) {
+  if (!unitFound) {
+    return Math.min(savedStep, UNIT_STEP)
+  }
+
+  return relationshipFound ? savedStep : Math.min(savedStep, RELATIONSHIP_STEP)
+}
+
+// El punto de partida: lo guardado en este navegador para el link, si sigue sirviendo (una unidad
+// o relación que ya no existe se vuelve a pedir), o el formulario vacío.
+function initialForm(token: string, data: JoinData) {
+  const saved = readProgress(token)
+
+  if (!saved || saved.step < 1 || saved.step > REVIEW_STEP) {
+    return EMPTY_FORM
+  }
+
+  const unit = data.units.find(item => item.id === saved.unitId)
+  const relationshipFound = data.relationships.some(
+    item => item.value === saved.relationship,
+  )
+
+  return {
+    ...saved,
+    relationship: relationshipFound ? saved.relationship : null,
+    resumed: true,
+    step: resumeStep({
+      relationshipFound,
+      savedStep: saved.step,
+      unitFound: unit !== undefined,
+    }),
+    unitId: unit?.id ?? '',
+    unitLabel: unit?.label ?? '',
+  }
+}
+
 export function useJoinForm({
   data,
   token,
@@ -95,26 +158,30 @@ export function useJoinForm({
   data: JoinData
   token: string
 }) {
-  const [step, setStep] = useState(0)
+  // El formulario se monta en el navegador, después de cargar el link: se puede leer lo guardado.
+  const [initial] = useState(() => initialForm(token, data))
+  const [resumed, setResumed] = useState(initial.resumed)
+
+  const [step, setStep] = useState(initial.step)
   // true mientras el vecino corrige un dato desde la revisión: al continuar vuelve ahí.
   const [editing, setEditing] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
 
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
+  const [firstName, setFirstName] = useState(initial.firstName)
+  const [lastName, setLastName] = useState(initial.lastName)
+  const [email, setEmail] = useState(initial.email)
+  const [phone, setPhone] = useState(initial.phone)
 
-  const [unitSearch, setUnitSearch] = useState('')
-  const [unitId, setUnitId] = useState('')
+  const [unitSearch, setUnitSearch] = useState(initial.unitLabel)
+  const [unitId, setUnitId] = useState(initial.unitId)
 
-  const [relationship, setRelationship] = useState<string | null>(null)
+  const [relationship, setRelationship] = useState(initial.relationship)
 
   // El código va al email de codeEmail; verifiedEmail es el que ya se verificó.
   const [code, setCode] = useState('')
-  const [codeEmail, setCodeEmail] = useState<string | null>(null)
-  const [verificationId, setVerificationId] = useState<string | null>(null)
-  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
+  const [codeEmail, setCodeEmail] = useState(initial.codeEmail)
+  const [verificationId, setVerificationId] = useState(initial.verificationId)
+  const [verifiedEmail, setVerifiedEmail] = useState(initial.verifiedEmail)
   const [codeError, setCodeError] = useState<string | null>(null)
   const [codeBusy, setCodeBusy] = useState(false)
   const [resendAt, setResendAt] = useState(0)
@@ -132,6 +199,41 @@ export function useJoinForm({
       inputRef.current?.focus()
     },
     [step],
+  )
+
+  // Guarda el avance mientras el vecino completa el formulario (no la bienvenida ni el final).
+  useEffect(
+    function keepProgress() {
+      if (step < 1 || step > REVIEW_STEP) {
+        return
+      }
+
+      saveProgress(token, {
+        codeEmail,
+        email,
+        firstName,
+        lastName,
+        phone,
+        relationship,
+        step,
+        unitId,
+        verificationId,
+        verifiedEmail,
+      })
+    },
+    [
+      codeEmail,
+      email,
+      firstName,
+      lastName,
+      phone,
+      relationship,
+      step,
+      token,
+      unitId,
+      verificationId,
+      verifiedEmail,
+    ],
   )
 
   // La cuenta regresiva de "Reenviar código" solo corre en el paso del código.
@@ -305,6 +407,27 @@ export function useJoinForm({
     }
   }
 
+  // "¿No sos vos?": borra lo guardado en este navegador y vuelve a la bienvenida.
+  function startOver() {
+    clearProgress(token)
+    setResumed(false)
+    setEditing(false)
+    setFirstName('')
+    setLastName('')
+    setEmail('')
+    setPhone('')
+    setUnitSearch('')
+    setUnitId('')
+    setRelationship(null)
+    setCode('')
+    setCodeEmail(null)
+    setVerificationId(null)
+    setVerifiedEmail(null)
+    setCodeError(null)
+    setSubmitError(null)
+    setStep(0)
+  }
+
   function changeEmail() {
     setCodeError(null)
     goTo(EMAIL_STEP)
@@ -371,11 +494,6 @@ export function useJoinForm({
       const result = (await response.json()) as { code?: string }
 
       if (!response.ok) {
-        if (result.code === 'ALREADY_PENDING') {
-          setStep(ALREADY_PENDING_STEP)
-          return
-        }
-
         // Venció o ya se usó: el próximo "Continuar" en Email pide otro código.
         if (result.code === 'EMAIL_NOT_VERIFIED') {
           setVerifiedEmail(null)
@@ -387,7 +505,10 @@ export function useJoinForm({
         return
       }
 
-      setStep(SENT_STEP)
+      clearProgress(token)
+      setResumed(false)
+      // 200: ya tenía una solicitud pendiente en el consorcio y se actualizó (submit/route.ts).
+      setStep(response.status === 200 ? UPDATED_STEP : SENT_STEP)
     } catch {
       setSubmitError(SUBMIT_ERROR)
     } finally {
@@ -421,6 +542,7 @@ export function useJoinForm({
     relationship,
     resendCode,
     resendSeconds,
+    resumed,
     selectedUnit,
     selectUnit,
     setEmail,
@@ -428,6 +550,7 @@ export function useJoinForm({
     setLastName,
     setPhone,
     setRelationship,
+    startOver,
     step,
     submit,
     submitError,

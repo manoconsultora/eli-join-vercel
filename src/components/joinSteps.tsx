@@ -343,23 +343,30 @@ const SentStep = () => (
   </Screen>
 )
 
-const AlreadyPendingStep = () => (
+const UpdatedStep = () => (
   <Screen>
+    <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-full bg-[#2346DD] text-2xl text-white">
+      ✓
+    </div>
+
     <Title>
-      <strong>Hey, tranqui!!</strong>
-      <span>Ya tenés un registro iniciado con esos datos.</span>
+      <strong>Actualizamos</strong>
+      <span>tu solicitud.</span>
     </Title>
 
     <p className="mt-6 text-lg leading-relaxed font-[100] text-zinc-500">
-      En minutos recibirás la confirmación del registro.
+      Ya tenías una solicitud pendiente en este edificio. La administración va a
+      ver tus datos nuevos.
     </p>
 
-    <p className="mt-6 text-sm font-[100] text-zinc-400">Gracias.</p>
+    <p className="mt-6 text-sm font-[100] text-zinc-400">
+      Te avisaremos cuando esté listo.
+    </p>
   </Screen>
 )
 
 // El índice es el número de paso: el email (3) pasa por el código (4), submit salta a
-// 9 (enviada) o 10 (ya pendiente), y la revisión (8) vuelve a 1-7 para corregir un dato
+// 9 (enviada) o 10 (actualizada), y la revisión (8) vuelve a 1-7 para corregir un dato
 // (useJoinForm.ts, los índices de los pasos).
 export const STEPS: ComponentType<StepProps>[] = [
   WelcomeStep,
@@ -372,5 +379,5 @@ export const STEPS: ComponentType<StepProps>[] = [
   RelationshipStep,
   ReviewStep,
   SentStep,
-  AlreadyPendingStep,
+  UpdatedStep,
 ]

@@ -89,6 +89,21 @@ function JoinForm({ data, token }: { data: JoinData; token: string }) {
                 : 'translate-y-0 opacity-100'
             }`}
           >
+            {form.resumed && (
+              // Retoma lo guardado en este navegador; en una computadora compartida puede no ser suyo.
+              <p className="mb-6 text-sm font-[100] text-zinc-400">
+                Seguimos con tu solicitud
+                {form.firstName ? `, ${form.firstName}` : ''}. ¿No sos vos?{' '}
+                <button
+                  className="text-[#2346DD]"
+                  onClick={form.startOver}
+                  type="button"
+                >
+                  Empezar de nuevo
+                </button>
+              </p>
+            )}
+
             <CurrentStep form={form} />
           </div>
         </section>

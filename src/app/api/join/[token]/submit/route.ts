@@ -136,47 +136,27 @@ async function unitAtCapacity(joinLink: JoinLink, unitId: string) {
     : null
 }
 
-async function alreadyPending(joinLink: JoinLink, submission: Submission) {
-  const { data: existingRequest, error } = await supabaseAdmin
-    .from('resident_onboarding_requests')
-    .select('id')
-    .eq('organization_id', joinLink.organization_id)
-    .eq('edificio_id', joinLink.edificio_id)
-    .eq('unidad_id', submission.unitId)
-    .eq('email', submission.email)
-    .eq('status', 'PENDING_VERIFICATION')
-    .maybeSingle()
-
-  if (error) {
-    return errorResponse('INTERNAL_ERROR', 500)
-  }
-
-  return existingRequest ? errorResponse('ALREADY_PENDING', 409) : null
-}
-
 // Corre los chequeos en orden y devuelve la primera respuesta de rechazo.
 const findRejection = async (joinLink: JoinLink, submission: Submission) =>
   (await relationshipTypeNotFound(submission.relationshipType)) ??
   (await unitNotFound(joinLink, submission.unitId)) ??
-  (await unitAtCapacity(joinLink, submission.unitId)) ??
-  (await alreadyPending(joinLink, submission))
+  (await unitAtCapacity(joinLink, submission.unitId))
 
-async function insertRequest(joinLink: JoinLink, submission: Submission) {
-  const { error } = await supabaseAdmin
-    .from('resident_onboarding_requests')
-    .insert({
-      edificio_id: joinLink.edificio_id,
-      email: submission.email,
-      email_verification_id: submission.emailVerificationId,
-      first_name: submission.firstName,
-      join_link_id: joinLink.id,
-      last_name: submission.lastName,
-      organization_id: joinLink.organization_id,
-      phone: submission.phone,
-      relationship_type_code: submission.relationshipType,
-      status: 'PENDING_VERIFICATION',
-      unidad_id: submission.unitId,
+// Volver con el mismo email verificado actualiza la solicitud pendiente del consorcio
+// en lugar de crear otra (eli-database-platform 20261010220000).
+async function submitRequest(joinLink: JoinLink, submission: Submission) {
+  const { data, error } = await supabaseAdmin
+    .rpc('submit_resident_onboarding_request', {
+      p_email: submission.email,
+      p_email_verification_id: submission.emailVerificationId,
+      p_first_name: submission.firstName,
+      p_join_link_id: joinLink.id,
+      p_last_name: submission.lastName,
+      p_phone: submission.phone,
+      p_relationship_type_code: submission.relationshipType,
+      p_unidad_id: submission.unitId,
     })
+    .single<{ request_id: string; updated: boolean }>()
 
   // The database rejects contacts on the organization's blacklist (eli-database-platform 20261006120000).
   if (error?.message === 'contact_blocked') {
@@ -188,11 +168,13 @@ async function insertRequest(joinLink: JoinLink, submission: Submission) {
     return errorResponse('EMAIL_NOT_VERIFIED', 403)
   }
 
-  if (error) {
+  if (error || !data) {
     return errorResponse('INTERNAL_ERROR', 500)
   }
 
-  return NextResponse.json({ status: 'PENDING_VERIFICATION' }, { status: 201 })
+  return data.updated
+    ? NextResponse.json({ status: 'UPDATED' }, { status: 200 })
+    : NextResponse.json({ status: 'PENDING_VERIFICATION' }, { status: 201 })
 }
 
 export async function POST(
@@ -220,5 +202,5 @@ export async function POST(
 
   const rejection = await findRejection(result.joinLink, submission)
 
-  return rejection ?? insertRequest(result.joinLink, submission)
+  return rejection ?? submitRequest(result.joinLink, submission)
 }
