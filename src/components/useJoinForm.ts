@@ -21,8 +21,15 @@ type Relationship = {
   value: string
 }
 
-// Índice del paso de revisión en STEPS (joinSteps.tsx).
-const REVIEW_STEP = 7
+// Índices en STEPS (joinSteps.tsx).
+const EMAIL_STEP = 3
+const VERIFY_STEP = 4
+const REVIEW_STEP = 8
+const SENT_STEP = 9
+const ALREADY_PENDING_STEP = 10
+
+// La base admite un código nuevo por minuto (eli-database-platform 20261010200000).
+const RESEND_DELAY_MS = 60_000
 
 export type JoinData = {
   consorcio: {
@@ -45,6 +52,8 @@ const SUBMIT_ERRORS: Record<string, string> = {
   // Doesn't say the contact is blocked: the administration explains it if needed.
   CONTACT_BLOCKED:
     'No pudimos registrar tu solicitud. Comunicate con la administración del edificio.',
+  EMAIL_NOT_VERIFIED:
+    'Necesitamos verificar tu email de nuevo. Tocá "Cambiar" en Email.',
   INVALID_TOKEN: INACTIVE_LINK_ERROR,
   TOKEN_INACTIVE: INACTIVE_LINK_ERROR,
   UNIT_LIMIT_REACHED:
@@ -52,6 +61,32 @@ const SUBMIT_ERRORS: Record<string, string> = {
   UNIT_NOT_FOUND: 'No encontramos esa unidad. Elegila de nuevo.',
   VALIDATION_ERROR: 'Revisá tus datos y volvé a intentar.',
 }
+
+const SEND_CODE_ERROR =
+  'No pudimos mandarte el código. Probá de nuevo en unos minutos.'
+
+// Códigos de email-code/route.ts.
+const SEND_CODE_ERRORS: Record<string, string> = {
+  CODE_RECENTLY_SENT:
+    'Ya te mandamos un código hace instantes. Esperá un minuto para pedir otro.',
+  INVALID_TOKEN: INACTIVE_LINK_ERROR,
+  TOKEN_INACTIVE: INACTIVE_LINK_ERROR,
+  TOO_MANY_CODES: 'Pediste muchos códigos. Probá de nuevo en una hora.',
+}
+
+const CODE_EXPIRED = 'El código venció. Pedí uno nuevo.'
+
+// Respuestas de email-code/verify/route.ts que no verifican.
+const VERIFY_CODE_ERRORS: Record<string, string> = {
+  expired: CODE_EXPIRED,
+  invalid_code: 'El código no es correcto. Revisalo y probá de nuevo.',
+  not_found: CODE_EXPIRED,
+  too_many_attempts: 'Superaste los intentos. Pedí un código nuevo.',
+}
+
+const normalizeEmail = (value: string) => value.trim().toLowerCase()
+
+const validCode = (value: string) => /^\d{6}$/.test(value)
 
 export function useJoinForm({
   data,
@@ -75,6 +110,16 @@ export function useJoinForm({
 
   const [relationship, setRelationship] = useState<string | null>(null)
 
+  // El código va al email de codeEmail; verifiedEmail es el que ya se verificó.
+  const [code, setCode] = useState('')
+  const [codeEmail, setCodeEmail] = useState<string | null>(null)
+  const [verificationId, setVerificationId] = useState<string | null>(null)
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
+  const [codeError, setCodeError] = useState<string | null>(null)
+  const [codeBusy, setCodeBusy] = useState(false)
+  const [resendAt, setResendAt] = useState(0)
+  const [clock, setClock] = useState(0)
+
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -85,6 +130,19 @@ export function useJoinForm({
   useEffect(
     function focusStepInput() {
       inputRef.current?.focus()
+    },
+    [step],
+  )
+
+  // La cuenta regresiva de "Reenviar código" solo corre en el paso del código.
+  useEffect(
+    function tickResendClock() {
+      setClock(Date.now())
+      const interval =
+        step === VERIFY_STEP
+          ? window.setInterval(() => setClock(Date.now()), 1000)
+          : undefined
+      return () => window.clearInterval(interval)
     },
     [step],
   )
@@ -106,7 +164,9 @@ export function useJoinForm({
 
   const selectedUnit = data.units.find(unit => unit.id === unitId)
 
-  const emailValid = validEmail(email.trim().toLowerCase())
+  const emailValid = validEmail(normalizeEmail(email))
+
+  const resendSeconds = Math.max(0, Math.ceil((resendAt - clock) / 1000))
 
   const phoneValid = validPhone(phone.trim())
 
@@ -141,6 +201,133 @@ export function useJoinForm({
     }
   }
 
+  async function requestCode(target: string) {
+    try {
+      const response = await fetch(
+        `/api/join/${encodeURIComponent(token)}/email-code`,
+        {
+          body: JSON.stringify({ email: target }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        },
+      )
+      const result = (await response.json()) as {
+        code?: string
+        verificationId?: string
+      }
+
+      if (!response.ok || !result.verificationId) {
+        setCodeError(SEND_CODE_ERRORS[result.code ?? ''] ?? SEND_CODE_ERROR)
+        return false
+      }
+
+      setVerificationId(result.verificationId)
+      setCodeEmail(target)
+      setCode('')
+      setResendAt(Date.now() + RESEND_DELAY_MS)
+      return true
+    } catch {
+      setCodeError(SEND_CODE_ERROR)
+      return false
+    }
+  }
+
+  // Un email ya verificado no pide otro código; uno con código en curso vuelve a ese código.
+  async function continueFromEmail() {
+    const target = normalizeEmail(email)
+
+    if (!validEmail(target) || codeBusy) {
+      return
+    }
+
+    setCodeError(null)
+
+    if (target === verifiedEmail) {
+      goTo(editing ? REVIEW_STEP : VERIFY_STEP + 1)
+      return
+    }
+
+    if (target === codeEmail && verificationId) {
+      goTo(VERIFY_STEP)
+      return
+    }
+
+    setCodeBusy(true)
+    const sent = await requestCode(target)
+    setCodeBusy(false)
+
+    if (sent) {
+      goTo(VERIFY_STEP)
+    }
+  }
+
+  async function resendCode() {
+    if (!codeEmail || codeBusy || resendSeconds > 0) {
+      return
+    }
+
+    setCodeError(null)
+    setCodeBusy(true)
+    await requestCode(codeEmail)
+    setCodeBusy(false)
+  }
+
+  async function verifyCode() {
+    if (!verificationId || !validCode(code) || codeBusy) {
+      return
+    }
+
+    setCodeError(null)
+    setCodeBusy(true)
+
+    try {
+      const response = await fetch(
+        `/api/join/${encodeURIComponent(token)}/email-code/verify`,
+        {
+          body: JSON.stringify({ code, verificationId }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        },
+      )
+      const result = (await response.json()) as { status?: string }
+
+      if (result.status === 'verified') {
+        setVerifiedEmail(codeEmail)
+        next()
+        return
+      }
+
+      setCodeError(VERIFY_CODE_ERRORS[result.status ?? ''] ?? SEND_CODE_ERROR)
+    } catch {
+      setCodeError(SEND_CODE_ERROR)
+    } finally {
+      setCodeBusy(false)
+    }
+  }
+
+  function changeEmail() {
+    setCodeError(null)
+    goTo(EMAIL_STEP)
+  }
+
+  function handleEmailKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void continueFromEmail()
+    }
+  }
+
+  function handleCodeKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void verifyCode()
+    }
+  }
+
+  function handleCodeChange(value: string) {
+    setCode(value.replace(/\D/g, '').slice(0, 6))
+  }
+
   function handleUnitSearchChange(event: ChangeEvent<HTMLInputElement>) {
     setUnitSearch(event.target.value)
     setUnitId('')
@@ -167,6 +354,7 @@ export function useJoinForm({
         {
           body: JSON.stringify({
             email,
+            emailVerificationId: verificationId,
             firstName,
             lastName,
             phone,
@@ -184,15 +372,22 @@ export function useJoinForm({
 
       if (!response.ok) {
         if (result.code === 'ALREADY_PENDING') {
-          setStep(9)
+          setStep(ALREADY_PENDING_STEP)
           return
+        }
+
+        // Venció o ya se usó: el próximo "Continuar" en Email pide otro código.
+        if (result.code === 'EMAIL_NOT_VERIFIED') {
+          setVerifiedEmail(null)
+          setVerificationId(null)
+          setCodeEmail(null)
         }
 
         setSubmitError(SUBMIT_ERRORS[result.code ?? ''] ?? SUBMIT_ERROR)
         return
       }
 
-      setStep(8)
+      setStep(SENT_STEP)
     } catch {
       setSubmitError(SUBMIT_ERROR)
     } finally {
@@ -201,12 +396,21 @@ export function useJoinForm({
   }
 
   return {
+    changeEmail,
+    code,
+    codeBusy,
+    codeEmail,
+    codeError,
+    continueFromEmail,
     data,
     editStep,
     email,
     emailValid,
     filteredUnits,
     firstName,
+    handleCodeChange,
+    handleCodeKeyDown,
+    handleEmailKeyDown,
     handleEnter,
     handleUnitSearchChange,
     inputRef,
@@ -215,6 +419,8 @@ export function useJoinForm({
     phone,
     phoneValid,
     relationship,
+    resendCode,
+    resendSeconds,
     selectedUnit,
     selectUnit,
     setEmail,
@@ -229,6 +435,8 @@ export function useJoinForm({
     transitioning,
     unitId,
     unitSearch,
+    validCode: validCode(code),
+    verifyCode,
   }
 }
 
