@@ -13,6 +13,7 @@ const MAX_ACTIVE_RESIDENTS_PER_UNIT = 5
 
 type SubmitBody = {
   email?: string
+  emailVerificationId?: string
   firstName?: string
   lastName?: string
   phone?: string
@@ -22,6 +23,7 @@ type SubmitBody = {
 
 type Submission = {
   email: string
+  emailVerificationId: string
   firstName: string
   lastName: string
   phone: string | null
@@ -42,6 +44,7 @@ async function readBody(request: Request) {
 
 const normalizeFields = (body: SubmitBody) => ({
   email: normalizeEmail(body.email ?? ''),
+  emailVerificationId: body.emailVerificationId,
   firstName: body.firstName?.trim(),
   lastName: body.lastName?.trim(),
   phone: body.phone?.trim() || null,
@@ -50,10 +53,19 @@ const normalizeFields = (body: SubmitBody) => ({
 })
 
 function parseSubmission(body: SubmitBody) {
-  const { email, firstName, lastName, phone, relationshipType, unitId } =
-    normalizeFields(body)
+  const {
+    email,
+    emailVerificationId,
+    firstName,
+    lastName,
+    phone,
+    relationshipType,
+    unitId,
+  } = normalizeFields(body)
 
+  // Sin el código verificado no hay solicitud: la base lo vuelve a chequear al insertar.
   if (
+    !emailVerificationId ||
     !firstName ||
     !lastName ||
     !validEmail(email) ||
@@ -64,7 +76,15 @@ function parseSubmission(body: SubmitBody) {
     return null
   }
 
-  return { email, firstName, lastName, phone, relationshipType, unitId }
+  return {
+    email,
+    emailVerificationId,
+    firstName,
+    lastName,
+    phone,
+    relationshipType,
+    unitId,
+  }
 }
 
 // Solo se aceptan los tipos activos del catálogo, los mismos que ofrece el GET.
@@ -147,6 +167,7 @@ async function insertRequest(joinLink: JoinLink, submission: Submission) {
     .insert({
       edificio_id: joinLink.edificio_id,
       email: submission.email,
+      email_verification_id: submission.emailVerificationId,
       first_name: submission.firstName,
       join_link_id: joinLink.id,
       last_name: submission.lastName,
@@ -160,6 +181,11 @@ async function insertRequest(joinLink: JoinLink, submission: Submission) {
   // The database rejects contacts on the organization's blacklist (eli-database-platform 20261006120000).
   if (error?.message === 'contact_blocked') {
     return errorResponse('CONTACT_BLOCKED', 403)
+  }
+
+  // Verificación vencida, ya usada o de otro email o link (eli-database-platform 20261010200000).
+  if (error?.message === 'email_not_verified') {
+    return errorResponse('EMAIL_NOT_VERIFIED', 403)
   }
 
   if (error) {

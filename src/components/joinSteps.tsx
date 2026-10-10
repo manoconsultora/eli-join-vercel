@@ -88,9 +88,7 @@ const EmailStep = ({ form }: StepProps) => (
     <LineInput
       inputRef={form.inputRef}
       onChange={form.setEmail}
-      onKeyDown={event =>
-        form.handleEnter(event, form.emailValid ? form.email : '')
-      }
+      onKeyDown={form.handleEmailKeyDown}
       placeholder="nombre@email.com"
       type="email"
       value={form.email}
@@ -103,7 +101,71 @@ const EmailStep = ({ form }: StepProps) => (
         : ''}
     </p>
 
-    <ContinueButton disabled={!form.emailValid} onClick={form.next} />
+    {form.codeError && (
+      <p className="mt-2 text-sm font-medium text-red-600">{form.codeError}</p>
+    )}
+
+    <ContinueButton
+      disabled={!form.emailValid || form.codeBusy}
+      onClick={() => void form.continueFromEmail()}
+    />
+  </Screen>
+)
+
+const VerifyEmailStep = ({ form }: StepProps) => (
+  <Screen>
+    <Title>
+      <strong>Revisá</strong>
+      <span>tu email.</span>
+    </Title>
+
+    <p className="mt-5 text-sm leading-relaxed font-[100] text-zinc-400">
+      Te mandamos un código de 6 dígitos a {form.codeEmail}. Si no lo ves,
+      fijate en spam o promociones.
+    </p>
+
+    <LineInput
+      autoComplete="one-time-code"
+      inputMode="numeric"
+      inputRef={form.inputRef}
+      onChange={form.handleCodeChange}
+      onKeyDown={form.handleCodeKeyDown}
+      placeholder="000000"
+      value={form.code}
+    />
+
+    <p
+      aria-live="polite"
+      className="mt-3 min-h-5 text-sm font-medium text-red-600"
+    >
+      {form.codeError ?? ''}
+    </p>
+
+    <div className="mt-2 flex gap-6 text-sm">
+      <button
+        className="text-[#2346DD] disabled:text-zinc-400"
+        disabled={form.codeBusy || form.resendSeconds > 0}
+        onClick={() => void form.resendCode()}
+        type="button"
+      >
+        {form.resendSeconds > 0
+          ? `Reenviar código (${form.resendSeconds} s)`
+          : 'Reenviar código'}
+      </button>
+
+      <button
+        className="text-[#2346DD]"
+        onClick={form.changeEmail}
+        type="button"
+      >
+        Cambiar email
+      </button>
+    </div>
+
+    <ContinueButton
+      disabled={!form.validCode || form.codeBusy}
+      onClick={() => void form.verifyCode()}
+    />
   </Screen>
 )
 
@@ -224,15 +286,15 @@ const ReviewStep = ({ form }: StepProps) => (
         {form.email}
       </Review>
 
-      <Review label="Teléfono" onChange={() => form.editStep(4)}>
+      <Review label="Teléfono" onChange={() => form.editStep(5)}>
         {form.phone}
       </Review>
 
-      <Review label="Unidad" onChange={() => form.editStep(5)}>
+      <Review label="Unidad" onChange={() => form.editStep(6)}>
         {form.selectedUnit?.label}
       </Review>
 
-      <Review label="Relación" onChange={() => form.editStep(6)}>
+      <Review label="Relación" onChange={() => form.editStep(7)}>
         {
           form.data.relationships.find(item => item.value === form.relationship)
             ?.label
@@ -296,13 +358,15 @@ const AlreadyPendingStep = () => (
   </Screen>
 )
 
-// El índice es el número de paso: submit salta a 8 (enviada) o 9 (ya pendiente),
-// y la revisión (7) vuelve a 1-6 para corregir un dato (useJoinForm.ts, REVIEW_STEP).
+// El índice es el número de paso: el email (3) pasa por el código (4), submit salta a
+// 9 (enviada) o 10 (ya pendiente), y la revisión (8) vuelve a 1-7 para corregir un dato
+// (useJoinForm.ts, los índices de los pasos).
 export const STEPS: ComponentType<StepProps>[] = [
   WelcomeStep,
   FirstNameStep,
   LastNameStep,
   EmailStep,
+  VerifyEmailStep,
   PhoneStep,
   UnitStep,
   RelationshipStep,

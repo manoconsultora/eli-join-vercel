@@ -19,6 +19,8 @@ export const Title = ({ children }: { children: ReactNode }) => (
 )
 
 export const LineInput = ({
+  autoComplete,
+  inputMode,
   inputRef,
   onChange,
   onKeyDown,
@@ -26,6 +28,8 @@ export const LineInput = ({
   type = 'text',
   value,
 }: {
+  autoComplete?: string
+  inputMode?: 'numeric'
   inputRef: Ref<HTMLInputElement>
   onChange: (value: string) => void
   onKeyDown: KeyboardEventHandler<HTMLInputElement>
@@ -35,7 +39,9 @@ export const LineInput = ({
 }) => (
   <input
     aria-labelledby={STEP_TITLE_ID}
+    autoComplete={autoComplete}
     className="mt-12 w-full border-0 border-b border-zinc-300 bg-transparent pb-3 text-2xl font-[100] text-zinc-950 transition outline-none placeholder:text-zinc-300 focus:border-[#2346DD]"
+    inputMode={inputMode}
     onChange={event => onChange(event.target.value)}
     onKeyDown={onKeyDown}
     placeholder={placeholder}
