@@ -10,6 +10,7 @@ import {
   Title,
 } from '@/components/joinUi'
 import type { JoinFormState } from '@/components/useJoinForm'
+import { formatPhone } from '@/lib/phone'
 
 type StepProps = {
   form: JoinFormState
@@ -173,7 +174,7 @@ const PhoneStep = ({ form }: StepProps) => (
   <Screen>
     <Title>
       <strong>¿Cuál es</strong>
-      <span>tu teléfono?</span>
+      <span>tu celular?</span>
     </Title>
 
     <LineInput
@@ -286,8 +287,8 @@ const ReviewStep = ({ form }: StepProps) => (
         {form.email}
       </Review>
 
-      <Review label="Teléfono" onChange={() => form.editStep(5)}>
-        {form.phone}
+      <Review label="Celular" onChange={() => form.editStep(5)}>
+        {formatPhone(form.phone)}
       </Review>
 
       <Review label="Unidad" onChange={() => form.editStep(6)}>
